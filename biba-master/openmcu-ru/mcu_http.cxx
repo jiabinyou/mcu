@@ -5,6 +5,9 @@
 #include <curl/curl.h>
 #include <memory>
 
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+
 const long kTimeoutMs = 10 * 1000;
 const int kMaxAttempts = 6;
 const int kBaseSleepMs = 250;
@@ -95,6 +98,16 @@ std::unique_ptr<MCUHTTPResponse> doRequest(const std::string& method, const std:
     }
     if (headers) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    }
+    if(是这个方法) {
+        //headers = curl_slist_append(headers, ("Content-MD5: " + content_md5).c_str());
+
+        // 调用 add_sigv4_header 函数，为请求添加 SIGV4 头。
+        std::string service = "s3"; 
+        std::string region = "us-west-2"; 
+        std::string ip_name = "my-bucket";
+        std::path = "";
+        add_sigv4_header(curl, access_key_id, secret_access_key, region, service, "PUT", bucket_name + ".s3.amazonaws.com", "/test.txt", "", body);
     }
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, kTimeoutMs);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
@@ -199,3 +212,39 @@ std::unique_ptr<MCUHTTPResponse> MCUHTTPClient::GetEc2Metadata(const std::string
     const std::string tokenHeader = "X-aws-ec2-metadata-token: " + token;
     return doRequestWithRetry("GET", url, "", tokenHeader, false, "");
 }
+
+void add_sigv4_header(CURL* curl, const std::string& access_key_id, const std::string& secret_access_key, const std::string& region, const std::string& service, const std::string& method, const std::string& endpoint, const std::string& path, const std::string& query_params, const std::string& payload) { 
+	// 构造时间戳和日期 
+	time_t now = time(nullptr); 
+	struct tm gm_time; 
+	gmtime_r(&now, &gm_time); 
+	char date[9], datetime[17]; 
+	strftime(date, sizeof(date), "%Y%m%d", &gm_time); 
+	strftime(datetime, sizeof(datetime), "%Y%m%dT%H%M%SZ", &gm_time); 
+	// 构造规范请求 
+	std::ostringstream oss; 
+	oss << method << "\n" << path << "\n" << query_params << "\n" << "host:" << endpoint << "\n" << "x-amz-content-sha256:" << sign("AWS4" + secret_access_key, payload) << "\n" << "x-amz-date:" << datetime << "\n\n" << "host;x-amz-content-sha256;x-amz-date\n" << sign("AWS4" + secret_access_key, ""); 
+	std::string canonical_request = oss.str(); 
+	// 构造待签名字符串 
+	std::ostringstream oss2; oss2 << "AWS4-HMAC-SHA256\n" << datetime << "\n" << date << "/" << region << "/" << service << "/aws4_request\n" << sign("AWS4" + secret_access_key, date) << "\n" << canonical_request; 
+	std::string string_to_sign = oss2.str(); 
+	// 计算签名 
+	std::string signature = sign(sign(sign(sign("AWS4" + secret_access_key, date), region), service), "aws4_request" + string_to_sign); 
+	// 添加Authorization头 
+	std::ostringstream oss3; 
+	oss3 << "AWS4-HMAC-SHA256 Credential=" << access_key_id << "/" << date << "/" << region << "/" << service << "/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date," << " Signature=" << signature; std::string authorization_header = oss3.str(); 
+    // 设置HTTP头 
+    struct curl_slist* headers = nullptr; 
+    headers = curl_slist_append(headers, ("Authorization: " + authorization_header).c_str()); 
+    headers = curl_slist_append(headers, ("X-Amz-Content-Sha256: " + sign("AWS4" + secret_access_key, payload)).c_str()); 
+    headers = curl_slist_append(headers, ("X-Amz-Date: " + std::string(datetime)).c_str()); 
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+} 
+
+std::string sign(const std::string& key, const std::string& data) { 
+	unsigned char* digest = HMAC(EVP_sha256(), key.c_str(), key.size(), reinterpret_cast<const unsigned char*>(data.c_str()), data.size(), nullptr, nullptr); std::stringstream ss; 
+	for (int i = 0; i < EVP_MD_size(EVP_sha256()); ++i) { 
+		ss << std::hex << static_cast<int>(digest[i]); 
+	} 
+	return ss.str();
+} 
