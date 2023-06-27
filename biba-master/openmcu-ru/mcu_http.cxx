@@ -214,31 +214,32 @@ std::unique_ptr<MCUHTTPResponse> MCUHTTPClient::GetEc2Metadata(const std::string
 }
 
 void add_sigv4_header(CURL* curl, const std::string& access_key_id, const std::string& secret_access_key, const std::string& region, const std::string& service, const std::string& method, const std::string& endpoint, const std::string& path, const std::string& query_params, const std::string& payload) { 
-	// 构造时间戳和日期 
-	time_t now = time(nullptr); 
-	struct tm gm_time; 
-	gmtime_r(&now, &gm_time); 
-	char date[9], datetime[17]; 
-	strftime(date, sizeof(date), "%Y%m%d", &gm_time); 
-	strftime(datetime, sizeof(datetime), "%Y%m%dT%H%M%SZ", &gm_time); 
-	// 构造规范请求 
-	std::ostringstream oss; 
-	oss << method << "\n" << path << "\n" << query_params << "\n" << "host:" << endpoint << "\n" << "x-amz-content-sha256:" << sign("AWS4" + secret_access_key, payload) << "\n" << "x-amz-date:" << datetime << "\n\n" << "host;x-amz-content-sha256;x-amz-date\n" << sign("AWS4" + secret_access_key, ""); 
-	std::string canonical_request = oss.str(); 
-	// 构造待签名字符串 
-	std::ostringstream oss2; oss2 << "AWS4-HMAC-SHA256\n" << datetime << "\n" << date << "/" << region << "/" << service << "/aws4_request\n" << sign("AWS4" + secret_access_key, date) << "\n" << canonical_request; 
-	std::string string_to_sign = oss2.str(); 
-	// 计算签名 
-	std::string signature = sign(sign(sign(sign("AWS4" + secret_access_key, date), region), service), "aws4_request" + string_to_sign); 
-	// 添加Authorization头 
-	std::ostringstream oss3; 
-	oss3 << "AWS4-HMAC-SHA256 Credential=" << access_key_id << "/" << date << "/" << region << "/" << service << "/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date," << " Signature=" << signature; std::string authorization_header = oss3.str(); 
-    // 设置HTTP头 
-    struct curl_slist* headers = nullptr; 
-    headers = curl_slist_append(headers, ("Authorization: " + authorization_header).c_str()); 
-    headers = curl_slist_append(headers, ("X-Amz-Content-Sha256: " + sign("AWS4" + secret_access_key, payload)).c_str()); 
-    headers = curl_slist_append(headers, ("X-Amz-Date: " + std::string(datetime)).c_str()); 
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+	// 构造时间戳和日期 GMT datetime string
+ 	time_t now = time(nullptr); 
+ 	struct tm gm_time; 
+ 	gmtime_r(&now, &gm_time); 
+ 	char date[9], datetime[17]; 
+ 	strftime(date, sizeof(date), "%Y%m%d", &gm_time);
+ 	strftime(datetime, sizeof(datetime), "%Y%m%dT%H%M%SZ", &gm_time); 
+ 	// 构造规范请求字符串，其中包括 HTTP 方法、路径、查询参数、主机名、内容 SHA256 摘要和日期时间等信息。
+ 	std::ostringstream oss; 
+ 	oss << method << "\n" << path << "\n" << query_params << "\n" << "host:" << endpoint << "\n" << "x-amz-content-sha256:" << sign("AWS4" + secret_access_key, payload) << "\n" << "x-amz-date:" << datetime << "\n\n" << "host;x-amz-content-sha256;x-amz-date\n" << sign("AWS4" + secret_access_key, ""); 
+ 	std::string canonical_request = oss.str(); 
+ 	// 构造待签名字符串，其中包括算法、日期时间、日期、服务、区域、请求类型、规范请求等信息。
+ 	std::ostringstream oss2; 
+ 	oss2 << "AWS4-HMAC-SHA256\n" << datetime << "\n" << date << "/" << region << "/" << service << "/aws4_request\n" << sign("AWS4" + secret_access_key, date) << "\n" << canonical_request; 
+ 	std::string string_to_sign = oss2.str(); 
+ 	// 计算签名，其中包括将密钥按序列连接并多次使用 HMAC-SHA256 算法计算签名。
+ 	std::string signature = sign(sign(sign(sign("AWS4" + secret_access_key, date), region), service), "aws4_request" + string_to_sign); 
+ 	// 构造授权头字符串，其中包括访问密钥、日期、区域、服务、请求类型、签名等信息。
+ 	std::ostringstream oss3; 
+ 	oss3 << "AWS4-HMAC-SHA256 Credential=" << access_key_id << "/" << date << "/" << region << "/" << service << "/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date," << " Signature=" << signature; 
+ 	std::string authorization_header = oss3.str(); 
+ 	// 构造 HTTP 头部，包括授权头、内容 SHA256 摘要和日期时间等信息，并使用 cURL 库的 `CURLOPT_HTTPHEADER` 选项设置 HTTP 头部。
+ 	struct curl_slist* headers = nullptr; 
+ 	headers = curl_slist_append(headers, ("Authorization: " + authorization_header).c_str()); headers = curl_slist_append(headers, ("X-Amz-Content-Sha256: " + sign("AWS4" + secret_access_key, payload)).c_str());
+ 	headers = curl_slist_append(headers, ("X-Amz-Date: " + std::string(datetime)).c_str()); 
+ 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
 } 
 
 std::string sign(const std::string& key, const std::string& data) { 
