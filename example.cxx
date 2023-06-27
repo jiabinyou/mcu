@@ -30,42 +30,56 @@ void add_sigv4_header(CURL* curl, const std::string& access_key_id, const std::s
 	oss3 << "AWS4-HMAC-SHA256 Credential=" << access_key_id << "/" << date << "/" << region << "/" << service << "/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date," << " Signature=" << signature; std::string authorization_header = oss3.str(); // 设置HTTP头 struct curl_slist* headers = nullptr; headers = curl_slist_append(headers, ("Authorization: " + authorization_header).c_str()); headers = curl_slist_append(headers, ("X-Amz-Content-Sha256: " + sign("AWS4" + secret_access_key, payload)).c_str()); headers = curl_slist_append(headers, ("X-Amz-Date: " + std::string(datetime)).c_str()); curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
 } 
 
-// 替换成自己的访问密钥ID和秘钥 
-std::string access_key_id = "AKIA************"; 
-std::string secret_access_key = "**************************"; 
-// AWS S3的服务名、区域和桶名 
-std::string service = "s3"; 
-std::string region = "us-west-2"; 
-std::string bucket_name = "my-bucket"; 
-// 要上传的文件内容 
-std::string payload = "Hello, world!"; 
-// 计算Content-MD5 
-BIO* bmem = BIO_new(BIO_s_mem()); 
-BIO_puts(bmem, payload.c_str()); BIO* hash = BIO_new(BIO_f_md()); 
-BIO_set_md(hash, EVP_md5()); hash = BIO_push(hash, bmem); 
-unsigned char md[EVP_MAX_MD_SIZE]; 
-int md_len = 0; 
-while (BIO_read(hash, md, sizeof(md)) > 0) { 
-	md_len += sizeof(md); 
-} 
-std::string content_md5 = reinterpret_cast<const char*>(md); 
-// 构造URL和HTTP头 std::ostringstream oss; oss << "https://" << bucket_name << ".s3.amazonaws.com/test.txt"; 
-std::string url = oss.str(); 
-curl_global_init(CURL_GLOBAL_ALL); 
-CURL* curl = curl_easy_init(); 
-if (!curl) { 
-	throw std::runtime_error("Failed to initialize cURL"); 
-} 
-struct curl_slist* headers = nullptr; 
-headers = curl_slist_append(headers, ("Content-MD5: " + content_md5).c_str()); 
-curl_easy_setopt(curl, CURLOPT_URL, url.c_str()); 
-curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT"); 
-curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L); curl_easy_setopt(curl, CURLOPT_READFUNCTION, &read_data); 
-curl_easy_setopt(curl, CURLOPT_READDATA, &payload); 
-curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, static_cast<curl_off_t>(payload.size())); 
-curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
-// 添加SIGV4头 add_sigv4_header(curl, access_key_id, secret_access_key, region, service, "PUT", bucket_name + ".s3.amazonaws.com", "/test.txt", "", payload); 
-// 发送HTTP请求 CURLcode res = curl_easy_perform(curl); 
-if (res != CURLE_OK) { 
-	throw std::runtime_error(curl_easy_strerror(res)); 
+int main()
+{
+ // 替换成自己的访问密钥ID和秘钥 
+ std::string access_key_id = "AKIA************"; 
+ std::string secret_access_key = "**************************"; 
+ // AWS S3的服务名、区域和桶名 
+ std::string service = "s3"; 
+ std::string region = "us-west-2";
+ std::string bucket_name = "my-bucket"; 
+ // 要上传的文件内容 
+ std::string payload = "Hello, world!"; 
+ // 计算上传文件的内容 MD5 值。
+ BIO* bmem = BIO_new(BIO_s_mem()); 
+ BIO_puts(bmem, payload.c_str()); 
+ BIO* hash = BIO_new(BIO_f_md());
+ BIO_set_md(hash, EVP_md5()); 
+ hash = BIO_push(hash, bmem); 
+ unsigned char md[EVP_MAX_MD_SIZE]; 
+ int md_len = 0; 
+ while (BIO_read(hash, md, sizeof(md)) > 0) 
+ { 
+  md_len += sizeof(md); 
+ } 
+ std::string content_md5 = reinterpret_cast<const char*>(md);
+ // 构造URL和HTTP头 
+ std::ostringstream oss; 
+ oss << "https://" << bucket_name << ".s3.amazonaws.com/test.txt"; 
+ std::string url = oss.str(); 
+ curl_global_init(CURL_GLOBAL_ALL); 
+ CURL* curl = curl_easy_init(); 
+ if (!curl) 
+ { 
+  throw std::runtime_error("Failed to initialize cURL"); 
+ } 
+ //配置 cURL 请求参数，包括 URL、请求类型（PUT）、上传文件标志、读取数据函数、上传数据大小等。
+ struct curl_slist* headers = nullptr; 
+ headers = curl_slist_append(headers, ("Content-MD5: " + content_md5).c_str());
+ curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+ curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+ curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L); 
+ curl_easy_setopt(curl, CURLOPT_READFUNCTION, &read_data); 
+ curl_easy_setopt(curl, CURLOPT_READDATA, &payload); 
+ curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, static_cast<curl_off_t>(payload.size())); 
+ curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+ // 调用 add_sigv4_header 函数，为请求添加 SIGV4 头。
+ add_sigv4_header(curl, access_key_id, secret_access_key, region, service, "PUT", bucket_name + ".s3.amazonaws.com", "/test.txt", "", payload);
+ // 发送HTTP请求 ,执行 cURL 请求，并在出错时抛出异常。
+ CURLcode res = curl_easy_perform(curl); 
+ if (res != CURLE_OK) 
+ { 
+  throw std::runtime_error(curl_easy_strerror(res)); 
+ }
 }
