@@ -235,6 +235,7 @@ void add_sigv4_header(CURL* curl, const std::string& access_key_id, const std::s
  	std::ostringstream oss3; 
  	oss3 << "AWS4-HMAC-SHA256 Credential=" << access_key_id << "/" << date << "/" << region << "/" << service << "/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date," << " Signature=" << signature; 
  	std::string authorization_header = oss3.str(); 
+	cout << "authorization_header" << authorization_header << "is end" << endl;
  	// 构造 HTTP 头部，包括授权头、内容 SHA256 摘要和日期时间等信息，并使用 cURL 库的 `CURLOPT_HTTPHEADER` 选项设置 HTTP 头部。
  	struct curl_slist* headers = nullptr; 
  	headers = curl_slist_append(headers, ("Authorization: " + authorization_header).c_str()); headers = curl_slist_append(headers, ("X-Amz-Content-Sha256: " + sign("AWS4" + secret_access_key, payload)).c_str());
